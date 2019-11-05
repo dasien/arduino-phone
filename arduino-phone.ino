@@ -10,6 +10,7 @@
  * 
  * 
  * Brian Gentry
+ * Licensed via MIT license.
  */
 #include <SPI.h>
 //#include <Wire.h>      // this is needed even tho we aren't using it
@@ -60,6 +61,10 @@
 // Length of text allowed in primary text field.
 #define TEXT_LEN 20
 
+// FM Radio settings.
+#define FM_FREQ_MIN 870
+#define FM_FREQ_MAX 1090
+
 // Serial communication with FONA device.
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
 
@@ -71,6 +76,9 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
 // The STMPE610 uses hardware SPI on the shield, and #8
 Adafruit_STMPE610 ts = Adafruit_STMPE610(STMPE_CS);
+
+// Current radio station.
+uint16_t currentStation = 0;
 
 // Tracking the last button pressed.
 byte lastButton = 0;
@@ -122,22 +130,18 @@ const button phonebuttons[15] PROGMEM = {
   {170, 280, 60, 30, ILI9341_WHITE, ILI9341_ORANGE, ILI9341_WHITE, "#", 1},
 };
 
-const button radiobuttons[15] PROGMEM = {
-  {10, 80, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Tune", 1},
-  {90, 80, 60, 30, ILI9341_WHITE, ILI9341_DARKGREY, ILI9341_WHITE, "Clear", 1},
+const button radiobuttons[11] PROGMEM = {
+  {10, 80, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "On", 1},
+  {90, 80, 60, 30, ILI9341_WHITE, ILI9341_DARKGREY, ILI9341_WHITE, "Off", 1},
   {170, 80, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Back", 1},
-  {10, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "1", 1},
-  {90, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "2", 1},
-  {170, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "3", 1},
-  {10, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "4", 1},
-  {90, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "5", 1},
-  {170, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "6", 1},
-  {10, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "7", 1},
-  {90, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "8", 1},
-  {170, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "9", 1},
-  {10, 280, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "On", 1},
-  {90, 280, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "0", 1},
-  {170, 280, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Off", 1},
+  {10, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 1", 1},
+  {90, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 10", 1},
+  {170, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 100", 1},
+  {10, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 1", 1},
+  {90, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 10", 1},
+  {170, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 100", 1},
+  {10, 280, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Vol +", 1},
+  {170, 280, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Vol -", 1},
 };
 
 // Print something in the mini status bar with either flashstring
@@ -165,6 +169,21 @@ void appendChar(char c)
     textfield_i++;
     textfield[textfield_i] = 0; // zero terminate
   }
+}
+
+bool tuneRadio(uint16_t station)
+{
+  bool retval = false;
+  
+  // Check to see if we are in allowable range.
+  if (station >= FM_FREQ_MIN && station <= FM_FREQ_MAX)
+  {
+    // Try to change station.
+    retval = fona.tuneFMradio(station);
+  }
+
+  // Return result.
+  return retval;
 }
 
 void drawTextField()
@@ -401,7 +420,116 @@ void handlePhoneUI(TS_Point p) {
 }
 
 void handleRadioUI(TS_Point p) {
+
+  button btn;
+  int8_t currentVol;
   
+  // Go thru all the buttons, checking if they were pressed.
+  for (uint8_t b = 0; b < 11; b++) {
+
+    // Get reference to struct.
+    memcpy_P (&btn, &radiobuttons[b], sizeof btn);
+
+    // Check to see if we have touched this button.
+    if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
+
+      //Serial.print("Pressing: "); Serial.println(b);
+      drawButton(btn, true);
+      lastButton = b;
+
+      switch (b) {
+
+        // Turn radio on.
+        case 0:
+
+          fona.FMradio(true, FONA_HEADSETAUDIO);
+          break;
+
+        // Turn radio off.
+        case 1:
+          
+          fona.FMradio(false, FONA_HEADSETAUDIO);
+          break;
+
+        // Go back to main menu.
+        case 2:
+          
+          drawMainUI();
+          break;
+
+        // Frequency up 1.
+        case 3:
+
+          if (tuneRadio(currentStation + 1)) {
+
+          }
+          break;
+
+        // Frequency up 10.
+        case 4:
+          
+          if (tuneRadio(currentStation + 10)) {
+
+          }
+          break;
+
+        // Frequency up 100.
+        case 5:
+          
+          if (tuneRadio(currentStation + 100)) {
+
+          }
+          break;
+
+        // Frequency down 1.
+        case 6:
+          
+          if (tuneRadio(currentStation - 1)) {
+
+          }
+          break;
+        
+        // Frequency down 10.
+        case 7:
+          
+          if (tuneRadio(currentStation - 10)) {
+
+          }
+          break;
+        
+        // Frequency down 100.
+        case 8:
+          
+          if (tuneRadio(currentStation - 100)) {
+
+          }
+          break;
+
+        // Volume up.
+        case 9:
+          
+          // Get current volume.
+          currentVol = fona.getFMVolume();
+          
+          // Try to change volume.
+          fona.setFMVolume(currentVol++);
+          break;
+
+        // Volume down.
+        case 10:
+          
+          // Get current volume.
+          currentVol = fona.getFMVolume();
+
+          // Try to change volume.
+          fona.setFMVolume(currentVol--);
+          break;
+
+        default:
+          break;
+      }
+    }
+  }
 }
 
 void setup() {
