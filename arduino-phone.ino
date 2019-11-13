@@ -12,6 +12,7 @@
  * Brian Gentry
  * Licensed via MIT license.
  */
+ 
 #include <SPI.h>
 //#include <Wire.h>      // this is needed even tho we aren't using it
 //#include "Adafruit_GFX.h"
@@ -78,7 +79,7 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 Adafruit_STMPE610 ts = Adafruit_STMPE610(STMPE_CS);
 
 // Current radio station.
-uint16_t currentStation = 0;
+uint16_t currentStation = 870;
 
 // Tracking the last button pressed.
 byte lastButton = 0;
@@ -137,11 +138,11 @@ const button radiobuttons[11] PROGMEM = {
   {10, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 1", 1},
   {90, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 10", 1},
   {170, 130, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "+ 100", 1},
-  {10, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 1", 1},
-  {90, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 10", 1},
-  {170, 230, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 100", 1},
-  {10, 280, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Vol +", 1},
-  {170, 280, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Vol -", 1},
+  {10, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 1", 1},
+  {90, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 10", 1},
+  {170, 180, 60, 30, ILI9341_WHITE, ILI9341_BLUE, ILI9341_WHITE, "- 100", 1},
+  {10, 230, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Vol +", 1},
+  {170, 230, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Vol -", 1},
 };
 
 // Print something in the mini status bar with either flashstring
@@ -171,19 +172,26 @@ void appendChar(char c)
   }
 }
 
-bool tuneRadio(uint16_t station)
+void tuneRadio(uint16_t station)
 {
-  bool retval = false;
-  
   // Check to see if we are in allowable range.
   if (station >= FM_FREQ_MIN && station <= FM_FREQ_MAX)
   {
+    //  Update current station.
+    currentStation = station;
+    
     // Try to change station.
-    retval = fona.tuneFMradio(station);
-  }
+    fona.tuneFMradio(currentStation);
 
-  // Return result.
-  return retval;
+    // Clear the current text field.
+    memset(textfield, 0, sizeof(textfield));
+
+    // Set text.
+    sprintf(textfield,"%i", currentStation);
+
+    // Display text.
+    drawTextField();
+  }
 }
 
 void drawTextField()
@@ -248,8 +256,14 @@ void drawMainUI() {
   // Button reference.
   button btn;
 
+  // Set the currently active screen to main.
+  setCurrentScreen(SCR_MAIN);
+
   // Clear the UI
   tft.fillScreen(ILI9341_BLACK);
+
+  // Create label to show text.
+  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
 
   for (uint8_t cnt = 0; cnt < 4; cnt++) {
 
@@ -259,9 +273,6 @@ void drawMainUI() {
     // Draw the button.
     drawButton(btn, false);
   }
-
-  // Set the currently active screen to main.
-  setCurrentScreen(SCR_MAIN);
 }
 
 void drawPhoneUI() {
@@ -269,8 +280,14 @@ void drawPhoneUI() {
   // Button reference.
   button btn;
 
+  // Set current screen to Phone.
+  setCurrentScreen(SCR_PHONE);
+
   // Clear the UI
   tft.fillScreen(ILI9341_BLACK);
+
+  // Create label to show phone number.
+  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
 
   for (uint8_t cnt = 0; cnt < 15; cnt++) {
 
@@ -280,9 +297,6 @@ void drawPhoneUI() {
     // Draw the button.
     drawButton(btn, false);
   }
-
-  // Set current screen to Phone.
-  setCurrentScreen(SCR_PHONE);
 }
 
 void drawRadioUI() {
@@ -290,8 +304,14 @@ void drawRadioUI() {
   // Button reference.
   button btn;
 
+  // Set current screen to Radio.
+  setCurrentScreen(SCR_RADIO);
+
   // Clear the UI
   tft.fillScreen(ILI9341_BLACK);
+
+  // Create label to show tuner.
+  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
 
   for (uint8_t cnt = 0; cnt < 15; cnt++) {
 
@@ -301,9 +321,6 @@ void drawRadioUI() {
     // Draw the button.
     drawButton(btn, false);
   }
-
-  // Set current screen to Radio.
-  setCurrentScreen(SCR_RADIO);
 }
 
 void handleMainUI(TS_Point p) {
@@ -387,6 +404,7 @@ void handlePhoneUI(TS_Point p) {
 
         // Clear character
         case 1:
+
           // Delete a character.
           deleteChar();
           drawTextField();
@@ -408,6 +426,7 @@ void handlePhoneUI(TS_Point p) {
 
           // update the current text field
           drawTextField();
+          break;
       }
     }
 
@@ -460,49 +479,37 @@ void handleRadioUI(TS_Point p) {
         // Frequency up 1.
         case 3:
 
-          if (tuneRadio(currentStation + 1)) {
-
-          }
+          tuneRadio(currentStation + 1);
           break;
 
         // Frequency up 10.
         case 4:
           
-          if (tuneRadio(currentStation + 10)) {
-
-          }
+          tuneRadio(currentStation + 10);
           break;
 
         // Frequency up 100.
         case 5:
           
-          if (tuneRadio(currentStation + 100)) {
-
-          }
+          tuneRadio(currentStation + 100);
           break;
 
         // Frequency down 1.
         case 6:
           
-          if (tuneRadio(currentStation - 1)) {
-
-          }
+          tuneRadio(currentStation - 1);
           break;
         
         // Frequency down 10.
         case 7:
           
-          if (tuneRadio(currentStation - 10)) {
-
-          }
+          tuneRadio(currentStation - 10);
           break;
         
         // Frequency down 100.
         case 8:
           
-          if (tuneRadio(currentStation - 100)) {
-
-          }
+          tuneRadio(currentStation - 100);
           break;
 
         // Volume up.
@@ -529,6 +536,12 @@ void handleRadioUI(TS_Point p) {
           break;
       }
     }
+
+    else {
+
+      // Draw the button.
+      drawButton(btn, false);
+    }
   }
 }
 
@@ -544,12 +557,9 @@ void setup() {
     while (1);
   }
 
-  // Create label to show phone number.
-  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
-
   Serial.println(F("Touchscreen started"));
+
   drawMainUI();
-  /*
     status(F("Checking for FONA..."));
     // Check FONA is there
     fonaSS.begin(4800);
@@ -570,9 +580,7 @@ void setup() {
 
     // set to external mic & headphone
     fona.setAudio(FONA_EXTAUDIO);
-  */
 }
-
 
 void loop(void) {
 
