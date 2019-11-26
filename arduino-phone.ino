@@ -4,20 +4,33 @@
  * This sketch lays out a few screens for a phone based on the Adafruit
  * FONA shield, their TFT screen, and their Metro 328 Arduino device.
  * 
+ * Copyright 2019 Brian Gentry
  * 
- * 
- * 
- * 
- * 
- * Brian Gentry
- * Licensed via MIT license.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
  
 #include <SPI.h>
 //#include <Wire.h>      // this is needed even tho we aren't using it
 //#include "Adafruit_GFX.h"
+#include "Adafruit_FT6206.h" 
 #include "Adafruit_ILI9341.h"
-#include <Adafruit_STMPE610.h>
+//#include <Adafruit_STMPE610.h> 
 #include <SoftwareSerial.h>
 #include "Adafruit_FONA.h"
 
@@ -30,9 +43,10 @@
 // For the Adafruit TFT shield, these are the default.
 #define TFT_DC 9
 #define TFT_CS 10
+#define TFT_BL 5
 
-// For the touchscreen part of display use pin 8
-#define STMPE_CS 8
+// For the touchscreen part of display use pin 8 (resistive only)
+//#define STMPE_CS 8
 
 // Screen identifiers.
 #define SCR_MAIN 1
@@ -75,9 +89,9 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
-// The STMPE610 uses hardware SPI on the shield, and #8
-Adafruit_STMPE610 ts = Adafruit_STMPE610(STMPE_CS);
-
+// This is for the capacitive touch screen.
+ Adafruit_FT6206 ts = Adafruit_FT6206();
+ 
 // Current radio station.
 uint16_t currentStation = 870;
 
@@ -249,10 +263,13 @@ void setCurrentScreen(byte screen) {
     // Replace current screen.
     currentScreen = (~currentScreen) & screen;
   }
+
+  Serial.print("Current Scren: "); Serial.println(currentScreen);
+
 }
 
 void drawMainUI() {
-
+Serial.println("Draw Main UI");
   // Button reference.
   button btn;
 
@@ -300,7 +317,7 @@ void drawPhoneUI() {
 }
 
 void drawRadioUI() {
-
+Serial.println("Draw Radio UI");
   // Button reference.
   button btn;
 
@@ -334,12 +351,9 @@ void handleMainUI(TS_Point p) {
     // Get reference to struct.
     memcpy_P (&btn, &mainbuttons[b], sizeof btn);
 
-    //DEBUG: Serial.print("Point x, y: ("); Serial.print(p.x); Serial.print(", ");
-    //DEBUG: Serial.print(p.y); Serial.println(")");
-    //DEBUG: Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
-    //DEBUG: Serial.print(btn.y); Serial.print(", ");
-    //DEBUG: Serial.print(btn.w); Serial.print(", ");
-    //DEBUG: Serial.print(btn.h); Serial.println(")");
+    Serial.print("Point x, y: ("); Serial.print(p.x); Serial.print(", "); Serial.print(p.y); Serial.println(")");
+    Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
+    Serial.print(btn.y); Serial.print(", "); Serial.print(btn.w); Serial.print(", "); Serial.print(btn.h); Serial.println(")");
 
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
 
@@ -364,6 +378,9 @@ void handleMainUI(TS_Point p) {
           drawRadioUI();
           break;
       }
+
+      // Since we found the button, stop looping.
+      b = 4;
     }
   }
 }
@@ -428,6 +445,9 @@ void handlePhoneUI(TS_Point p) {
           drawTextField();
           break;
       }
+
+      // Since we found the button, stop looping.
+      b = 15;
     }
 
     else {
@@ -456,6 +476,7 @@ void handleRadioUI(TS_Point p) {
       drawButton(btn, true);
       lastButton = b;
 
+      // Check to see what to do.
       switch (b) {
 
         // Turn radio on.
@@ -472,7 +493,7 @@ void handleRadioUI(TS_Point p) {
 
         // Go back to main menu.
         case 2:
-          
+          Serial.println("About to go back to main.");
           drawMainUI();
           break;
 
@@ -535,6 +556,9 @@ void handleRadioUI(TS_Point p) {
         default:
           break;
       }
+
+      // Since we found the button, stop looping.
+      b = 11;
     }
 
     else {
@@ -560,6 +584,7 @@ void setup() {
   Serial.println(F("Touchscreen started"));
 
   drawMainUI();
+/*
     status(F("Checking for FONA..."));
     // Check FONA is there
     fonaSS.begin(4800);
@@ -580,17 +605,24 @@ void setup() {
 
     // set to external mic & headphone
     fona.setAudio(FONA_EXTAUDIO);
+*/
 }
 
 void loop(void) {
-
+  
   // Check to see if the user touched the screen.
   if (ts.touched()) {
+  Serial.println("In main loop - touch registered.");
 
     // Get the point where the user touched.
     TS_Point p = ts.getPoint();
-    p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
-    p.y = map(p.y, TS_MINY, TS_MAXY, 0, tft.height());
+
+      p.x = map(p.x, 0, 240, 240, 0);
+      p.y = map(p.y, 0, 320, 320, 0);
+
+
+//    p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
+//    p.y = map(p.y, TS_MINY, TS_MAXY, 0, tft.height());
 
     //DEBUG: Serial.print("("); Serial.print(p.x); Serial.print(", ");
     //DEBUG: Serial.print(p.y); Serial.print(", ");
@@ -600,6 +632,7 @@ void loop(void) {
     switch (currentScreen) {
 
       case SCR_MAIN:
+        Serial.println("Main Screen Handler");
 
         // Call screen handler.
         handleMainUI(p);
@@ -612,6 +645,7 @@ void loop(void) {
         break;
 
       case SCR_RADIO:
+        Serial.println("Radio Screen Handler");
 
         // Call screen handler.
         handleRadioUI(p);
