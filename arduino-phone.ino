@@ -56,10 +56,10 @@
 #define SCR_FUT2 16
 
 // This is calibration data for the raw touch data to the screen coordinates
-#define TS_MINX 150
-#define TS_MINY 130
-#define TS_MAXX 3800
-#define TS_MAXY 4000
+#define TS_MINX 0
+#define TS_MINY 0
+#define TS_MAXX 240
+#define TS_MAXY 320
 
 // Text box where info goes.
 #define TEXT_X 10
@@ -351,9 +351,9 @@ void handleMainUI(TS_Point p) {
     // Get reference to struct.
     memcpy_P (&btn, &mainbuttons[b], sizeof btn);
 
-    Serial.print("Point x, y: ("); Serial.print(p.x); Serial.print(", "); Serial.print(p.y); Serial.println(")");
-    Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
-    Serial.print(btn.y); Serial.print(", "); Serial.print(btn.w); Serial.print(", "); Serial.print(btn.h); Serial.println(")");
+    //Serial.print("Point x, y: ("); Serial.print(p.x); Serial.print(", "); Serial.print(p.y); Serial.println(")");
+    //Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
+    //Serial.print(btn.y); Serial.print(", "); Serial.print(btn.w); Serial.print(", "); Serial.print(btn.h); Serial.println(")");
 
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
 
@@ -493,7 +493,6 @@ void handleRadioUI(TS_Point p) {
 
         // Go back to main menu.
         case 2:
-          Serial.println("About to go back to main.");
           drawMainUI();
           break;
 
@@ -617,8 +616,8 @@ void loop(void) {
     // Get the point where the user touched.
     TS_Point p = ts.getPoint();
 
-      p.x = map(p.x, 0, 240, 240, 0);
-      p.y = map(p.y, 0, 320, 320, 0);
+      p.x = map(p.x, TS_MINX, TS_MAXX, TS_MAXX, TS_MINX);
+      p.y = map(p.y, TS_MINY, TS_MAXY, TS_MAXY, TS_MINY);
 
 
 //    p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
