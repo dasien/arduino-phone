@@ -4,6 +4,15 @@
  * This sketch lays out a few screens for a phone based on the Adafruit
  * FONA shield, their TFT screen, and their Metro 328 Arduino device.
  * 
+ * This version uses the Adafruit capacitive touchscreen rather than the 
+ * resisitive one.  If you want to use the resisitive screen, you will need 
+ * to swap out the libraries and change the values for mapping touches to screen
+ * coordinations (MINX, MAXX, etc) and perhaps the "map" overload used.
+ * 
+ * I pulled what was needed from the great Adafruit_GFX library as it was lighter
+ * weight to just create a struct than an array of button classes from that lib.
+ * This helped to get the project to fit in 2k of RAM.
+ * 
  * Copyright 2019 Brian Gentry
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,13 +34,11 @@
  * SOFTWARE.
  */
  
-#include <SPI.h>
 //#include <Wire.h>      // this is needed even tho we aren't using it
-//#include "Adafruit_GFX.h"
+#include <SPI.h>
+#include <SoftwareSerial.h>
 #include "Adafruit_FT6206.h" 
 #include "Adafruit_ILI9341.h"
-//#include <Adafruit_STMPE610.h> 
-#include <SoftwareSerial.h>
 #include "Adafruit_FONA.h"
 
 // Pins for FONA use.
@@ -45,8 +52,11 @@
 #define TFT_CS 10
 #define TFT_BL 5
 
-// For the touchscreen part of display use pin 8 (resistive only)
-//#define STMPE_CS 8
+// This is calibration data for the raw touch data to the screen coordinates
+#define TS_MINX 0
+#define TS_MINY 0
+#define TS_MAXX 240
+#define TS_MAXY 320
 
 // Screen identifiers.
 #define SCR_MAIN 1
@@ -54,12 +64,6 @@
 #define SCR_RADIO 4
 #define SCR_FUT1 8
 #define SCR_FUT2 16
-
-// This is calibration data for the raw touch data to the screen coordinates
-#define TS_MINX 0
-#define TS_MINY 0
-#define TS_MAXX 240
-#define TS_MAXY 320
 
 // Text box where info goes.
 #define TEXT_X 10
@@ -90,7 +94,7 @@ Adafruit_FONA fona = Adafruit_FONA(FONA_RST);
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
 // This is for the capacitive touch screen.
- Adafruit_FT6206 ts = Adafruit_FT6206();
+Adafruit_FT6206 ts = Adafruit_FT6206();
  
 // Current radio station.
 uint16_t currentStation = 870;
@@ -105,7 +109,7 @@ byte currentScreen = 0;
 char textfield[TEXT_LEN + 1] = "";
 uint8_t textfield_i = 0;
 
-// Struct for holding button elements.
+// Struct for holding button properties.
 typedef struct {
   int16_t x;
   int16_t y;
@@ -159,8 +163,8 @@ const button radiobuttons[11] PROGMEM = {
   {170, 230, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Vol -", 1},
 };
 
-// Print something in the mini status bar with either flashstring
 void status(const __FlashStringHelper *msg) {
+  
   tft.fillRect(STATUS_X, STATUS_Y, 240, 8, ILI9341_BLACK);
   tft.setCursor(STATUS_X, STATUS_Y);
   tft.setTextColor(ILI9341_WHITE);
@@ -168,17 +172,17 @@ void status(const __FlashStringHelper *msg) {
   tft.print(msg);
 }
 
-void deleteChar()
-{
+void deleteChar() {
   textfield[textfield_i] = 0;
+  
   if (textfield > 0) {
     textfield_i--;
     textfield[textfield_i] = ' ';
   }
 }
 
-void appendChar(char c)
-{
+void appendChar(char c) {
+  
   if (textfield_i < TEXT_LEN) {
     textfield[textfield_i] = c;
     textfield_i++;
@@ -186,30 +190,13 @@ void appendChar(char c)
   }
 }
 
-void tuneRadio(uint16_t station)
-{
-  // Check to see if we are in allowable range.
-  if (station >= FM_FREQ_MIN && station <= FM_FREQ_MAX)
-  {
-    //  Update current station.
-    currentStation = station;
-    
-    // Try to change station.
-    fona.tuneFMradio(currentStation);
+void clearTextField() {
 
-    // Clear the current text field.
-    memset(textfield, 0, sizeof(textfield));
-
-    // Set text.
-    sprintf(textfield,"%i", currentStation);
-
-    // Display text.
-    drawTextField();
-  }
+  textfield_i = 0;
+  memset(textfield, 0, sizeof(textfield));
 }
 
-void drawTextField()
-{
+void drawTextField() {
   Serial.println(textfield);
   tft.setCursor(TEXT_X + 2, TEXT_Y + 10);
   tft.setTextColor(TEXT_TCOLOR, ILI9341_BLACK);
@@ -221,8 +208,6 @@ void drawButton(button btn, bool pressed) {
 
   // Temp variables for colors.
   uint16_t fill, outline, text;
-
-  Serial.print("Label: "); Serial.println(btn.label);
 
   // Check to see if we are drawing 'pressed' state.
   if (pressed) {
@@ -263,13 +248,32 @@ void setCurrentScreen(byte screen) {
     // Replace current screen.
     currentScreen = (~currentScreen) & screen;
   }
+}
 
-  Serial.print("Current Scren: "); Serial.println(currentScreen);
+void tuneRadio(uint16_t station)
+{
+  // Check to see if we are in allowable range.
+  if (station >= FM_FREQ_MIN && station <= FM_FREQ_MAX)
+  {
+    //  Update current station.
+    currentStation = station;
+    
+    // Try to change station.
+    fona.tuneFMradio(currentStation);
 
+    // Clear the current text field.
+    memset(textfield, 0, sizeof(textfield));
+
+    // Set text.
+    sprintf(textfield,"%i", currentStation);
+
+    // Display text.
+    drawTextField();
+  }
 }
 
 void drawMainUI() {
-Serial.println("Draw Main UI");
+
   // Button reference.
   button btn;
 
@@ -317,7 +321,7 @@ void drawPhoneUI() {
 }
 
 void drawRadioUI() {
-Serial.println("Draw Radio UI");
+
   // Button reference.
   button btn;
 
@@ -355,10 +359,13 @@ void handleMainUI(TS_Point p) {
     //Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
     //Serial.print(btn.y); Serial.print(", "); Serial.print(btn.w); Serial.print(", "); Serial.print(btn.h); Serial.println(")");
 
+    // Check to see if we have touched this button.
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
 
-      //DEBUG: Serial.print("Pressing: "); Serial.println(b);
+      // Draw the button as pressed.
       drawButton(btn, true);
+
+      // Hang on to this button id.
       lastButton = b;
 
       // Action based on which button was pressed.
@@ -388,6 +395,7 @@ void handleMainUI(TS_Point p) {
 void handlePhoneUI(TS_Point p) {
 
   button btn;
+  button lastBtn;
   
   // Go thru all the buttons, checking if they were pressed.
   for (uint8_t b = 0; b < 15; b++) {
@@ -398,8 +406,16 @@ void handlePhoneUI(TS_Point p) {
     // Check to see if we have touched this button.
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
 
-      //Serial.print("Pressing: "); Serial.println(b);
+      // Get reference to last button.
+      memcpy_P (&lastBtn, &phonebuttons[lastButton], sizeof lastBtn);
+
+      // Undraw last button (in case it was after the current button in the list).
+      drawButton(lastBtn, false);
+
+      // Draw the button as pressed.
       drawButton(btn, true);
+
+      // Hang on to this button id.
       lastButton = b;
 
       switch (b) {
@@ -432,6 +448,9 @@ void handlePhoneUI(TS_Point p) {
           status(F("Hanging up"));
           fona.hangUp();
 
+          // Clear text field.
+          clearTextField();
+          
           // For now, this also sends things back to the main menu.
           drawMainUI();
           break;
@@ -461,6 +480,7 @@ void handlePhoneUI(TS_Point p) {
 void handleRadioUI(TS_Point p) {
 
   button btn;
+  button lastBtn;
   int8_t currentVol;
   
   // Go thru all the buttons, checking if they were pressed.
@@ -472,8 +492,16 @@ void handleRadioUI(TS_Point p) {
     // Check to see if we have touched this button.
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
 
-      //Serial.print("Pressing: "); Serial.println(b);
+      // Get reference to last button.
+      memcpy_P (&lastBtn, &radiobuttons[lastButton], sizeof lastBtn);
+
+      // Undraw last button (in case it was after the current button in the list).
+      drawButton(lastBtn, false);
+
+      // Draw the button as pressed.
       drawButton(btn, true);
+
+      // Hang on to this button id.
       lastButton = b;
 
       // Check to see what to do.
@@ -583,7 +611,7 @@ void setup() {
   Serial.println(F("Touchscreen started"));
 
   drawMainUI();
-/*
+
     status(F("Checking for FONA..."));
     // Check FONA is there
     fonaSS.begin(4800);
@@ -602,37 +630,27 @@ void setup() {
     }
     status(F("Connected to network!"));
 
-    // set to external mic & headphone
-    fona.setAudio(FONA_EXTAUDIO);
-*/
+    // Set audio to headset.
+    fona.setAudio(FONA_HEADSETAUDIO);
 }
 
 void loop(void) {
   
   // Check to see if the user touched the screen.
   if (ts.touched()) {
-  Serial.println("In main loop - touch registered.");
 
     // Get the point where the user touched.
     TS_Point p = ts.getPoint();
 
-      p.x = map(p.x, TS_MINX, TS_MAXX, TS_MAXX, TS_MINX);
-      p.y = map(p.y, TS_MINY, TS_MAXY, TS_MAXY, TS_MINY);
-
-
-//    p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width());
-//    p.y = map(p.y, TS_MINY, TS_MAXY, 0, tft.height());
-
-    //DEBUG: Serial.print("("); Serial.print(p.x); Serial.print(", ");
-    //DEBUG: Serial.print(p.y); Serial.print(", ");
-    //DEBUG: Serial.print(p.z); Serial.println(") ");
+    // Map touch screen coordinates.
+    p.x = map(p.x, TS_MINX, TS_MAXX, TS_MAXX, TS_MINX);
+    p.y = map(p.y, TS_MINY, TS_MAXY, TS_MAXY, TS_MINY);
 
     // Check to see which screen is active.
     switch (currentScreen) {
 
       case SCR_MAIN:
-        Serial.println("Main Screen Handler");
-
+        
         // Call screen handler.
         handleMainUI(p);
         break;
@@ -644,7 +662,6 @@ void loop(void) {
         break;
 
       case SCR_RADIO:
-        Serial.println("Radio Screen Handler");
 
         // Call screen handler.
         handleRadioUI(p);
@@ -654,16 +671,7 @@ void loop(void) {
         break;
     }
   }
-/*
-    else {
-      // When the user lifts their finger, need to redraw the button that was just touched.
-      if (phonebuttons[lastButton].isPressed()) {
-        phonebuttons[lastButton].press(false);
-        phonebuttons[lastButton].drawButton();
-      }
-    }
 
-  */
   // UI touch debouncing
   delay(100);
 }
