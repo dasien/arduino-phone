@@ -62,8 +62,8 @@
 #define SCR_MAIN 1
 #define SCR_PHONE 2
 #define SCR_RADIO 4
-#define SCR_FUT1 8
-#define SCR_FUT2 16
+#define SCR_SMS 8
+#define SCR_STATUS 16
 
 // Text box where info goes.
 #define TEXT_X 10
@@ -101,6 +101,7 @@ uint16_t currentStation = 870;
 
 // Tracking the last button pressed.
 byte lastButton = 0;
+bool redrawButton = false;
 
 // Tracking the screen currently shown.
 byte currentScreen = 0;
@@ -162,6 +163,14 @@ const button radiobuttons[11] PROGMEM = {
   {10, 230, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Vol +", 1},
   {170, 230, 60, 30, ILI9341_WHITE, ILI9341_RED, ILI9341_WHITE, "Vol -", 1},
 };
+
+const button statusbuttons[2] PROGMEM = {
+  {10, 280, 60, 30, ILI9341_WHITE, ILI9341_ORANGE, ILI9341_WHITE, "Reset", 1},
+  {170, 280, 60, 30, ILI9341_WHITE, ILI9341_DARKGREEN, ILI9341_WHITE, "Ok", 1},
+};
+
+// For software reset.
+void (* reset)(void) = 0;
 
 void status(const __FlashStringHelper *msg) {
   
@@ -334,7 +343,7 @@ void drawRadioUI() {
   // Create label to show tuner.
   tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
 
-  for (uint8_t cnt = 0; cnt < 15; cnt++) {
+  for (uint8_t cnt = 0; cnt < 11; cnt++) {
 
     // Get reference to struct.
     memcpy_P (&btn, &radiobuttons[cnt], sizeof btn);
@@ -342,6 +351,46 @@ void drawRadioUI() {
     // Draw the button.
     drawButton(btn, false);
   }
+}
+
+void drawStatusUI() {
+
+  // battery
+  uint16_t vbat;
+  if (! fona.getBattPercent(&vbat)) {
+    Serial.println(F("Failed to read Batt"));
+  } else {
+    Serial.print(F("VPct = ")); Serial.print(vbat); Serial.println(F("%"));
+  }
+
+  // network
+  uint8_t n = fona.getNetworkStatus();
+  Serial.print(F("Network status "));
+  Serial.print(n);
+  Serial.print(F(": "));
+  if (n == 0) Serial.println(F("Not registered"));
+  if (n == 1) Serial.println(F("Registered (home)"));
+  if (n == 2) Serial.println(F("Not registered (searching)"));
+  if (n == 3) Serial.println(F("Denied"));
+  if (n == 4) Serial.println(F("Unknown"));
+  if (n == 5) Serial.println(F("Registered roaming"));
+
+  // SMS
+  int8_t smsnum = fona.getNumSMS();
+  if (smsnum < 0) {
+    Serial.println(F("Could not read # SMS"));
+  } 
+  
+  else {
+    Serial.print(smsnum);
+    Serial.println(F(" SMS's on SIM card!"));
+  } 
+
+  // Time
+  char buffer[23];
+  fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
+  Serial.print(F("Time = ")); Serial.println(buffer);
+
 }
 
 void handleMainUI(TS_Point p) {
@@ -354,10 +403,6 @@ void handleMainUI(TS_Point p) {
 
     // Get reference to struct.
     memcpy_P (&btn, &mainbuttons[b], sizeof btn);
-
-    //Serial.print("Point x, y: ("); Serial.print(p.x); Serial.print(", "); Serial.print(p.y); Serial.println(")");
-    //Serial.print("Button x, w, y, h: ("); Serial.print(btn.x); Serial.print(", ");
-    //Serial.print(btn.y); Serial.print(", "); Serial.print(btn.w); Serial.print(", "); Serial.print(btn.h); Serial.println(")");
 
     // Check to see if we have touched this button.
     if (((p.x >= btn.x) && (p.x < (int16_t) (btn.x + btn.w)) && (p.y >= btn.y) && (p.y < (int16_t) (btn.y + btn.h)))) {
@@ -384,6 +429,9 @@ void handleMainUI(TS_Point p) {
           // Show radio UI.
           drawRadioUI();
           break;
+
+        case 2:
+          drawStatusUI();
       }
 
       // Since we found the button, stop looping.
@@ -596,6 +644,10 @@ void handleRadioUI(TS_Point p) {
   }
 }
 
+void handleStatusUI(TS_Point p) {
+  
+}
+
 void setup() {
   Serial.begin(9600);
   Serial.println(F("Arduin-o-Phone!"));
@@ -639,6 +691,9 @@ void loop(void) {
   // Check to see if the user touched the screen.
   if (ts.touched()) {
 
+    // Flag that we need to redraw button when user stops touching screen.
+    redrawButton = true;
+    
     // Get the point where the user touched.
     TS_Point p = ts.getPoint();
 
@@ -667,11 +722,66 @@ void loop(void) {
         handleRadioUI(p);
         break;
 
+      case SCR_SMS:
+        break;
+
+      case SCR_STATUS:
+
+        // Call screen handler.
+        handleStatusUI(p);
+        break;
+
       default:
         break;
     }
   }
 
+  // When the user lifts their finger, need to redraw the button that was just touched.
+  else {
+
+    button lastBtn;
+
+    // Check to see that we have not already drawn the button 'untouched'. (prevent flicker)
+    if (redrawButton) {
+      
+      switch (currentScreen) {
+  
+        case SCR_MAIN:
+          
+          // Get reference to last button.
+          memcpy_P (&lastBtn, &mainbuttons[lastButton], sizeof lastBtn);
+          break;
+  
+        case SCR_PHONE:
+  
+          // Get reference to last button.
+          memcpy_P (&lastBtn, &phonebuttons[lastButton], sizeof lastBtn);
+          break;
+  
+        case SCR_RADIO:
+  
+          // Get reference to last button.
+          memcpy_P (&lastBtn, &radiobuttons[lastButton], sizeof lastBtn);
+          break;
+  
+        case SCR_SMS:
+          break;
+  
+        case SCR_STATUS:
+  
+          // Get reference to last button.
+          memcpy_P (&lastBtn, &statusbuttons[lastButton], sizeof lastBtn);
+          break;
+  
+        default:
+          break;
+        }
+
+        // Undraw last button (in case it was after the current button in the list).
+        drawButton(lastBtn, false);
+        redrawButton = false;
+      }
+    }
   // UI touch debouncing
   delay(100);
 }
