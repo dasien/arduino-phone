@@ -281,13 +281,13 @@ void tuneRadio(uint16_t station)
   }
 }
 
-void drawMainUI() {
+void drawButtonUI(byte screen, uint8_t maxcnt, button buttons[]) {
 
   // Button reference.
   button btn;
 
   // Set the currently active screen to main.
-  setCurrentScreen(SCR_MAIN);
+  setCurrentScreen(screen);
 
   // Clear the UI
   tft.fillScreen(ILI9341_BLACK);
@@ -295,58 +295,10 @@ void drawMainUI() {
   // Create label to show text.
   tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
 
-  for (uint8_t cnt = 0; cnt < 4; cnt++) {
+  for (uint8_t cnt = 0; cnt < maxcnt; cnt++) {
 
     // Get reference to struct.
-    memcpy_P (&btn, &mainbuttons[cnt], sizeof btn);
-
-    // Draw the button.
-    drawButton(btn, false);
-  }
-}
-
-void drawPhoneUI() {
-
-  // Button reference.
-  button btn;
-
-  // Set current screen to Phone.
-  setCurrentScreen(SCR_PHONE);
-
-  // Clear the UI
-  tft.fillScreen(ILI9341_BLACK);
-
-  // Create label to show phone number.
-  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
-
-  for (uint8_t cnt = 0; cnt < 15; cnt++) {
-
-    // Get reference to struct.
-    memcpy_P (&btn, &phonebuttons[cnt], sizeof btn);
-
-    // Draw the button.
-    drawButton(btn, false);
-  }
-}
-
-void drawRadioUI() {
-
-  // Button reference.
-  button btn;
-
-  // Set current screen to Radio.
-  setCurrentScreen(SCR_RADIO);
-
-  // Clear the UI
-  tft.fillScreen(ILI9341_BLACK);
-
-  // Create label to show tuner.
-  tft.drawRect(TEXT_X, TEXT_Y, TEXT_W, TEXT_H, ILI9341_WHITE);
-
-  for (uint8_t cnt = 0; cnt < 11; cnt++) {
-
-    // Get reference to struct.
-    memcpy_P (&btn, &radiobuttons[cnt], sizeof btn);
+    memcpy_P (&btn, &buttons[cnt], sizeof btn);
 
     // Draw the button.
     drawButton(btn, false);
@@ -420,14 +372,14 @@ void handleMainUI(TS_Point p) {
         case 0:
 
           // Show phone UI.
-          drawPhoneUI();
+          drawButtonUI(SCR_PHONE, 15, phonebuttons);
           break;
 
         // Radio UI.
         case 1:
 
           // Show radio UI.
-          drawRadioUI();
+          drawButtonUI(SCR_RADIO, 11, radiobuttons);
           break;
 
         case 2:
@@ -500,7 +452,7 @@ void handlePhoneUI(TS_Point p) {
           clearTextField();
           
           // For now, this also sends things back to the main menu.
-          drawMainUI();
+          drawButtonUI(SCR_MAIN, 4, mainbuttons);
           break;
           
         // All other buttons are numbers.
@@ -569,7 +521,7 @@ void handleRadioUI(TS_Point p) {
 
         // Go back to main menu.
         case 2:
-          drawMainUI();
+          drawButtonUI(SCR_MAIN, 4, mainbuttons);
           break;
 
         // Frequency up 1.
@@ -662,28 +614,28 @@ void setup() {
 
   Serial.println(F("Touchscreen started"));
 
-  drawMainUI();
+  drawButtonUI(SCR_MAIN, 4, mainbuttons);
+          
+  status(F("Checking for FONA..."));
+  // Check FONA is there
+  fonaSS.begin(4800);
 
-    status(F("Checking for FONA..."));
-    // Check FONA is there
-    fonaSS.begin(4800);
+  // See if the FONA is responding
+  if (! fona.begin(fonaSS)) {
+    status(F("Couldn't find FONA :("));
+    while (1);
+  }
+  status(F("FONA is OK!"));
 
-    // See if the FONA is responding
-    if (! fona.begin(fonaSS)) {
-      status(F("Couldn't find FONA :("));
-      while (1);
-    }
-    status(F("FONA is OK!"));
+  // Check we connect to the network
+  while (fona.getNetworkStatus() != 1) {
+    status(F("Looking for service..."));
+    delay(5000);
+  }
+  status(F("Connected to network!"));
 
-    // Check we connect to the network
-    while (fona.getNetworkStatus() != 1) {
-      status(F("Looking for service..."));
-      delay(5000);
-    }
-    status(F("Connected to network!"));
-
-    // Set audio to headset.
-    fona.setAudio(FONA_HEADSETAUDIO);
+  // Set audio to headset.
+  fona.setAudio(FONA_HEADSETAUDIO);
 }
 
 void loop(void) {
