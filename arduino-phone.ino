@@ -84,6 +84,12 @@
 #define FM_FREQ_MIN 870
 #define FM_FREQ_MAX 1090
 
+// Array size constants.
+#define MAIN_BTN_ARRAY_SIZE 4
+#define PHONE_BTN_ARRAY_SIZE 15
+#define RADIO_BTN_ARRAY_SIZE 11
+#define STATUS_BTN_ARRAY_SIZE 2
+
 // Serial communication with FONA device.
 SoftwareSerial fonaSS = SoftwareSerial(FONA_TX, FONA_RX);
 
@@ -124,7 +130,7 @@ typedef struct {
 } button;
 
 // Main menu buttons.
-const button mainbuttons[4] PROGMEM = {
+const button mainbuttons[MAIN_BTN_ARRAY_SIZE] PROGMEM = {
   {40, 80, 60, 60, ILI9341_WHITE, ILI9341_PURPLE, ILI9341_WHITE, "Phone", 1},
   {120, 80, 60, 60, ILI9341_WHITE, ILI9341_DARKCYAN, ILI9341_WHITE, "Radio", 1},
   {40, 160, 60, 60, ILI9341_WHITE, ILI9341_DARKCYAN, ILI9341_WHITE, "Future 1", 1},
@@ -181,6 +187,9 @@ void status(const __FlashStringHelper *msg) {
   tft.print(msg);
 }
 
+/*
+*   Removes a character from a textfield
+*/
 void deleteChar() {
   textfield[textfield_i] = 0;
   
@@ -190,6 +199,11 @@ void deleteChar() {
   }
 }
 
+/*
+*   Appends a character to a textfield
+*   
+*   @param c - The character to be added
+*/
 void appendChar(char c) {
   
   if (textfield_i < TEXT_LEN) {
@@ -199,13 +213,22 @@ void appendChar(char c) {
   }
 }
 
+
+/*
+*   Clears all text from textfield
+*/
 void clearTextField() {
 
   textfield_i = 0;
   memset(textfield, 0, sizeof(textfield));
 }
 
+
+/*
+*   Draws a textfield on the screen
+*/
 void drawTextField() {
+
   Serial.println(textfield);
   tft.setCursor(TEXT_X + 2, TEXT_Y + 10);
   tft.setTextColor(TEXT_TCOLOR, ILI9341_BLACK);
@@ -213,6 +236,12 @@ void drawTextField() {
   tft.print(textfield);
 }
 
+/*
+*   Draws a button on the screen.  
+*   
+*   @param btn - The button struct with size, color, etc
+*   @param pressed - Whether the button should be drawn in 'pressed' state
+*/
 void drawButton(button btn, bool pressed) {
 
   // Temp variables for colors.
@@ -249,6 +278,12 @@ void drawButton(button btn, bool pressed) {
   tft.print(btn.label);
 }
 
+/*
+*   Keeps track of the current screen being shown.  This is used by the main loop to determine  
+*   which screen handler to invoke in response to a touch.
+*   
+*   @param screen - The screen flag indentifier
+*/
 void setCurrentScreen(byte screen) {
 
   // Check to see if we are already on that screen.
@@ -259,6 +294,11 @@ void setCurrentScreen(byte screen) {
   }
 }
 
+/*
+*   Changes the radio station.  
+*   
+*   @param station - The station frequency to tune to, as an integer
+*/
 void tuneRadio(uint16_t station)
 {
   // Check to see if we are in allowable range.
@@ -281,6 +321,14 @@ void tuneRadio(uint16_t station)
   }
 }
 
+/*
+*   Draws screens which contain buttons in a generic way.  
+*   
+*   @param screen - The screen to set as current
+*   @param maxcnt - The number of buttons which will be drawn (should be the length 
+*                   of the array of buttons for this screen)
+*   @param buttons - The button array to be used in drawing
+*/
 void drawButtonUI(byte screen, uint8_t maxcnt, button buttons[]) {
 
   // Button reference.
@@ -343,15 +391,24 @@ void drawStatusUI() {
   fona.getTime(buffer, 23);  // make sure replybuffer is at least 23 bytes!
   Serial.print(F("Time = ")); Serial.println(buffer);
 
+  uint8_t v = fona.getVolume();
+  Serial.print("Current Volume = ");
+  Serial.println(v);
+
 }
 
+/*
+*   Handles all screen touches for the main screen.  
+*   
+*   @param p - The point struct for the screen location which was touched
+*/
 void handleMainUI(TS_Point p) {
 
   // Button reference.
   button btn;
 
   // Go thru all the buttons, checking if they were pressed.
-  for (uint8_t b = 0; b < 4; b++) {
+  for (uint8_t b = 0; b < MAIN_BTN_ARRAY_SIZE; b++) {
 
     // Get reference to struct.
     memcpy_P (&btn, &mainbuttons[b], sizeof btn);
@@ -372,14 +429,14 @@ void handleMainUI(TS_Point p) {
         case 0:
 
           // Show phone UI.
-          drawButtonUI(SCR_PHONE, 15, phonebuttons);
+          drawButtonUI(SCR_PHONE, PHONE_BTN_ARRAY_SIZE, phonebuttons);
           break;
 
         // Radio UI.
         case 1:
 
           // Show radio UI.
-          drawButtonUI(SCR_RADIO, 11, radiobuttons);
+          drawButtonUI(SCR_RADIO, RADIO_BTN_ARRAY_SIZE, radiobuttons);
           break;
 
         case 2:
@@ -387,18 +444,23 @@ void handleMainUI(TS_Point p) {
       }
 
       // Since we found the button, stop looping.
-      b = 4;
+      b = MAIN_BTN_ARRAY_SIZE;
     }
   }
 }
 
+/*
+*   Handles all screen touches for the phone screen.  
+*   
+*   @param p - The point struct for the screen location which was touched
+*/
 void handlePhoneUI(TS_Point p) {
 
   button btn;
   button lastBtn;
   
   // Go thru all the buttons, checking if they were pressed.
-  for (uint8_t b = 0; b < 15; b++) {
+  for (uint8_t b = 0; b < PHONE_BTN_ARRAY_SIZE; b++) {
 
     // Get reference to struct.
     memcpy_P (&btn, &phonebuttons[b], sizeof btn);
@@ -452,7 +514,7 @@ void handlePhoneUI(TS_Point p) {
           clearTextField();
           
           // For now, this also sends things back to the main menu.
-          drawButtonUI(SCR_MAIN, 4, mainbuttons);
+          drawButtonUI(SCR_MAIN, MAIN_BTN_ARRAY_SIZE, mainbuttons);
           break;
           
         // All other buttons are numbers.
@@ -466,7 +528,7 @@ void handlePhoneUI(TS_Point p) {
       }
 
       // Since we found the button, stop looping.
-      b = 15;
+      b = PHONE_BTN_ARRAY_SIZE;
     }
 
     else {
@@ -477,6 +539,11 @@ void handlePhoneUI(TS_Point p) {
   }
 }
 
+/*
+*   Handles all screen touches for the radio screen.  
+*   
+*   @param p - The point struct for the screen location which was touched
+*/
 void handleRadioUI(TS_Point p) {
 
   button btn;
@@ -484,7 +551,7 @@ void handleRadioUI(TS_Point p) {
   int8_t currentVol;
   
   // Go thru all the buttons, checking if they were pressed.
-  for (uint8_t b = 0; b < 11; b++) {
+  for (uint8_t b = 0; b < RADIO_BTN_ARRAY_SIZE; b++) {
 
     // Get reference to struct.
     memcpy_P (&btn, &radiobuttons[b], sizeof btn);
@@ -521,7 +588,7 @@ void handleRadioUI(TS_Point p) {
 
         // Go back to main menu.
         case 2:
-          drawButtonUI(SCR_MAIN, 4, mainbuttons);
+          drawButtonUI(SCR_MAIN, MAIN_BTN_ARRAY_SIZE, mainbuttons);
           break;
 
         // Frequency up 1.
@@ -585,7 +652,7 @@ void handleRadioUI(TS_Point p) {
       }
 
       // Since we found the button, stop looping.
-      b = 11;
+      b = RADIO_BTN_ARRAY_SIZE;
     }
 
     else {
@@ -596,10 +663,18 @@ void handleRadioUI(TS_Point p) {
   }
 }
 
+/*
+*   Handles all screen touches for the status screen.  
+*   
+*   @param p - The point struct for the screen location which was touched
+*/
 void handleStatusUI(TS_Point p) {
   
 }
 
+/*
+*   Sets up phone hardware and draws main screen 
+*/
 void setup() {
   Serial.begin(9600);
   Serial.println(F("Arduin-o-Phone!"));
@@ -614,7 +689,7 @@ void setup() {
 
   Serial.println(F("Touchscreen started"));
 
-  drawButtonUI(SCR_MAIN, 4, mainbuttons);
+  drawButtonUI(SCR_MAIN, MAIN_BTN_ARRAY_SIZE, mainbuttons);
           
   status(F("Checking for FONA..."));
   // Check FONA is there
@@ -638,6 +713,10 @@ void setup() {
   fona.setAudio(FONA_HEADSETAUDIO);
 }
 
+/*
+*   The main loop registers and delegates the handling of screen touches to other methods.  
+*   It also draws buttons after the user lifts their finger.
+*/
 void loop(void) {
   
   // Check to see if the user touched the screen.
